@@ -1,0 +1,463 @@
+AWSTemplateFormatVersion: "2010-09-09"
+
+Description: Create VPC with 6 subnets (Public & Private) across 2 AZs and NAT Gateways
+
+Resources:
+  # ------------------------------------------------------------#
+  #  VPC
+  # ------------------------------------------------------------#
+  # VPC Create
+  cloudVPC:
+    Type: "AWS::EC2::VPC"
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: MyVPC
+        - Key: StackName
+          Value: !Ref AWS::StackName
+        - Key: Description
+          Value: VPC for web application
+
+  # ------------------------------------------------------------#
+  #  Subnet
+  # ------------------------------------------------------------#
+  # Create Public Subnets (AZ1&2)
+  PublicSubnetAZ1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref cloudVPC
+      CidrBlock: 10.0.0.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: Public-Subnet-AZ1
+        - Key: StackName
+          Value: !Ref AWS::StackName
+  PublicSubnetAZ2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref cloudVPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: Public-Subnet-AZ2
+        - Key: StackName
+          Value: !Ref AWS::StackName
+
+  # Create Private Subnets (AZ1)
+  PrivateSubnetAZ1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref cloudVPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: Private-Subnet-AZ1
+        - Key: StackName
+          Value: !Ref AWS::StackName
+  PrivateSubnetDBAZ1:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref cloudVPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: Private-DB-Subnet-AZ1
+        - Key: StackName
+          Value: !Ref AWS::StackName
+
+  # Create Private Subnets (AZ2)
+  PrivateSubnetAZ2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref cloudVPC
+      CidrBlock: 10.0.4.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: Private-Subnet-AZ2
+        - Key: StackName
+          Value: !Ref AWS::StackName
+  PrivateSubnetDBAZ2:
+    Type: "AWS::EC2::Subnet"
+    Properties:
+      VpcId: !Ref cloudVPC
+      CidrBlock: 10.0.5.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: Private-DB-Subnet-AZ2
+        - Key: StackName
+          Value: !Ref AWS::StackName
+
+  # Create Internet Gateway
+  internetGateway:
+    Type: "AWS::EC2::InternetGateway"
+    Properties:
+      Tags:
+        - Key: Name
+          Value: MyInternetGateway
+        - Key: StackName
+          Value: !Ref AWS::StackName
+
+  # Attach Internet Gateway to VPC
+  gatewayAttachment:
+    Type: "AWS::EC2::VPCGatewayAttachment"
+    Properties:
+      VpcId: !Ref cloudVPC
+      InternetGatewayId: !Ref internetGateway
+
+  # Create Public Route Table
+  PublicRouteTable:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref cloudVPC
+      Tags:
+        - Key: Name
+          Value: PublicRouteTable
+        - Key: StackName
+          Value: !Ref AWS::StackName
+
+  # Create Public Route to Internet Gateway
+  # Gắn route tables vào IGW
+  PublicRoute:
+    Type: "AWS::EC2::Route"
+    DependsOn: gatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: "0.0.0.0/0"
+      GatewayId: !Ref internetGateway
+
+  # Associate Public Subnets with Public Route Table
+  #kết nối giữa các subnet public và public route table
+  PublicSubnetAZ1RouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PublicSubnetAZ1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetAZ2RouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PublicSubnetAZ2
+      RouteTableId: !Ref PublicRouteTable
+
+  # # Create NAT Gateway
+  # NatGatewayAZ1:
+  #   Type: "AWS::EC2::NatGateway"
+  #   DependsOn: gatewayAttachment
+  #   Properties:
+  #     AllocationId: !GetAtt NatGatewayEIPAZ1.AllocationId
+  #     SubnetId: !Ref PublicSubnetAZ1
+  #     Tags:
+  #       - Key: Name
+  #         Value: NATGatewayAZ1
+  #       - Key: StackName
+  #         Value: !Ref AWS::StackName
+
+  # NatGatewayAZ2:
+  #   Type: "AWS::EC2::NatGateway"
+  #   DependsOn: gatewayAttachment
+  #   Properties:
+  #     AllocationId: !GetAtt NatGatewayEIPAZ2.AllocationId
+  #     SubnetId: !Ref PublicSubnetAZ2
+  #     Tags:
+  #       - Key: Name
+  #         Value: NATGatewayAZ2
+  #       - Key: StackName
+  #         Value: !Ref AWS::StackName
+
+  # # Elastic IPs for NAT Gateways
+  # NatGatewayEIPAZ1:
+  #   Type: "AWS::EC2::EIP"
+  #   Properties:
+  #     Domain: vpc
+
+  # NatGatewayEIPAZ2:
+  #   Type: "AWS::EC2::EIP"
+  #   Properties:
+  #     Domain: vpc
+
+  # Private Route Table (AZ1)
+  PrivateRouteTableAZ1:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref cloudVPC
+      Tags:
+        - Key: Name
+          Value: PrivateRouteTableAZ1
+        - Key: StackName
+          Value: !Ref AWS::StackName
+
+  # # Private Route to NAT Gateway (AZ1)
+  # PrivateRouteAZ1:
+  #   Type: "AWS::EC2::Route"
+  #   DependsOn: NatGatewayAZ1
+  #   Properties:
+  #     RouteTableId: !Ref PrivateRouteTableAZ1
+  #     DestinationCidrBlock: "0.0.0.0/0"
+  #     NatGatewayId: !Ref NatGatewayAZ1
+
+  # Associate Private Subnets (AZ1) with Private Route Table
+  PrivateSubnetAZ1RouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PrivateSubnetAZ1
+      RouteTableId: !Ref PrivateRouteTableAZ1
+
+  # PrivateSubnetDBAZ1RouteTableAssociation:
+  #   Type: "AWS::EC2::SubnetRouteTableAssociation"
+  #   Properties:
+  #     SubnetId: !Ref PrivateSubnetDBAZ1
+  #     RouteTableId: !Ref PrivateRouteTableAZ1
+
+  # Private Route Table (AZ2)
+  PrivateRouteTableAZ2:
+    Type: "AWS::EC2::RouteTable"
+    Properties:
+      VpcId: !Ref cloudVPC
+      Tags:
+        - Key: Name
+          Value: PrivateRouteTableAZ2
+        - Key: StackName
+          Value: !Ref AWS::StackName
+
+  # # Private Route to NAT Gateway (AZ2)
+  # PrivateRouteAZ2:
+  #   Type: "AWS::EC2::Route"
+  #   DependsOn: NatGatewayAZ2
+  #   Properties:
+  #     RouteTableId: !Ref PrivateRouteTableAZ2
+  #     DestinationCidrBlock: "0.0.0.0/0"
+  #     NatGatewayId: !Ref NatGatewayAZ2
+
+  # Associate Private Subnets (AZ2) with Private Route Table
+  PrivateSubnetAZ2RouteTableAssociation:
+    Type: "AWS::EC2::SubnetRouteTableAssociation"
+    Properties:
+      SubnetId: !Ref PrivateSubnetAZ2
+      RouteTableId: !Ref PrivateRouteTableAZ2
+
+  # Tạo các Security Groups------------------------------------------------
+  # Create Security Group for internet-facing load balancer
+  InternetFacingLBSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: Security Group for internet-facing load balancer
+      GroupName: internet-facing-lb-sg
+      VpcId: !Ref cloudVPC
+      #Inbound roles
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0 #116.82.240.84/32
+
+  # Create Security Group for Web Tier instances
+  WebTierSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: Security Group for Web Tier instances
+      GroupName: WebTierSG
+      VpcId: !Ref cloudVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref InternetFacingLBSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0 #116.82.240.84/32
+
+  # Create Security Group for internal load balancer
+  InternalLBSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: Security Group for internal load balancer
+      GroupName: internal-lb-sg
+      VpcId: !Ref cloudVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref WebTierSecurityGroup
+
+  # Create Security Group for private instances
+  PrivateInstanceSecurityGroup:
+    Type: "AWS::EC2::SecurityGroup"
+    Properties:
+      GroupDescription: Security Group for private instances
+      GroupName: PrivateInstanceSG
+      VpcId: !Ref cloudVPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 4000
+          ToPort: 4000
+          SourceSecurityGroupId: !Ref InternalLBSecurityGroup
+        - IpProtocol: tcp
+          FromPort: 4000
+          ToPort: 4000
+          CidrIp: 116.82.240.84/32
+
+  SSMIAMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - ec2.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore
+        - arn:aws:iam::aws:policy/AmazonS3ReadOnlyAccess
+
+  WebServerInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Path: /
+      Roles:
+        - !Ref SSMIAMRole
+
+  # Create Ec2
+  WebServerTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: webserver-template
+      LaunchTemplateData:
+        # IamInstanceProfile: !Ref WebServerInstanceProfile
+        ImageId: ami-0022f774911c1d690
+        InstanceType: t2.micro
+        IamInstanceProfile:
+          Arn: !GetAtt WebServerInstanceProfile.Arn
+        NetworkInterfaces:
+          - DeviceIndex: 0
+            AssociatePublicIpAddress: True
+            Groups:
+              - !Ref WebTierSecurityGroup
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: Web tier instance
+        # Add the code from '2. Install Apache web server on the instance' step here.
+        UserData:
+          Fn::Base64: |
+            #!/bin/bash
+            sudo yum update -y
+
+            curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.5/install.sh | bash
+            export NVM_DIR="$HOME/.nvm"
+            [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+            source ~/.bashrc
+            nvm install 16
+            nvm use 16
+            version=$(node --version)
+            node -e "console.log('Running Node.js ' + process.version)"
+
+            cd /home/ec2-user/
+            aws s3 cp s3://my3webappbucket123/aws-three-tier-web-architecture-workshop/application-code/web-tier/ web-tier --recursive
+
+            cd /home/ec2-user/web-tier
+            npm install
+            npm run build
+
+            sudo amazon-linux-extras install nginx1 -y
+
+            cd /etc/nginx
+            sudo rm nginx.conf
+            sudo aws s3 cp s3://my3webappbucket123/aws-three-tier-web-architecture-workshop/application-code/nginx.conf .
+
+
+            sudo service nginx restart
+            chmod -R 755 /home/ec2-user
+            sudo chkconfig nginx on
+
+  #Create AutoScaling
+  AutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      MinSize: "1"
+      MaxSize: "1"
+      DesiredCapacity: "1"
+      LaunchTemplate:
+        LaunchTemplateId: !Ref WebServerTemplate
+        Version: !GetAtt WebServerTemplate.LatestVersionNumber
+      HealthCheckType: ELB
+      HealthCheckGracePeriod: 300
+      VPCZoneIdentifier:
+        - !Ref PublicSubnetAZ1
+        - !Ref PublicSubnetAZ2
+      TargetGroupARNs:
+        - !Ref ALBTargetGroups
+
+  #Policy used to track CPU usage for autoscaling
+  cpuUsage:
+    Type: AWS::AutoScaling::ScalingPolicy
+    Properties:
+      AutoScalingGroupName: !Ref AutoScalingGroup
+      PolicyType: TargetTrackingScaling
+      TargetTrackingConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ASGAverageCPUUtilization
+        TargetValue: 50
+
+  #Create Targetgroup
+  ALBTargetGroups:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref cloudVPC
+      TargetType: instance
+      HealthCheckPath: /health
+      Port: 80
+      Protocol: HTTP
+      Tags:
+        - Key: Name
+          Value: web tier ASG
+
+  #Create ALB
+  WebTierExtenalALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Type: application
+      Scheme: internet-facing
+      SecurityGroups:
+        - !Ref InternalLBSecurityGroup
+      Subnets:
+        - !Ref PublicSubnetAZ1
+        - !Ref PublicSubnetAZ2
+
+      Tags:
+        - Key: Name
+          Value: Extenal ALB
+
+  #Create ALB listener
+  ExtenalALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      Protocol: HTTP
+      Port: 80
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroups
+      LoadBalancerArn: !Ref WebTierExtenalALB
+
+Outputs:
+  WebServerPublicDNS:
+    Description: "Public DNS of EC2 instance"
+    Value: !GetAtt WebTierExtenalALB.DNSName
+
+  WebsiteURL:
+    Value: !GetAtt WebTierExtenalALB.DNSName
+    Description: Application URL
